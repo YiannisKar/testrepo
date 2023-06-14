@@ -1,9 +1,8 @@
-- name: Test play
-  hosts: all
+---
+- hosts: 127.0.0.1
   become: true
   tasks:
-   - name: Ping my hosts
-     ansible.builtin.ping:
-   - name: Print message
-     ansible.builtin.debug:
-       msg: Hello world
+   yum :
+        name: nano
+        state: present
+ 
