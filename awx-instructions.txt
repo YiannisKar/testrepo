@@ -1,0 +1,146 @@
+﻿#Instructions to deploy awx-operator on minikube cluster
+
+1) Install minikube cluster on your machine. Prior to that virtualbox should be installed already ,this can be done with
+the following command (for ubuntu distro): 
+
+ sudo apt-get update && sudo apt-get install -y curl wget virtualbox
+
+2) Install kubectl (a command-line interface for running commands against Kubernetes clusters). This is the command for that:
+
+sudo apt-get update && sudo apt-get install -y apt-transport-https
+curl -s https://packages.cloud.google.com/apt/doc/apt-key.gpg | sudo apt-key add -
+echo "deb https://apt.kubernetes.io/ kubernetes-xenial main" | sudo tee /etc/apt/sources.list.d/kubernetes.list
+sudo apt-get update
+sudo apt-get install -y kubectl
+
+3)Install minikube. 
+
+curl -LO https://storage.googleapis.com/minikube/releases/latest/minikube-linux-amd64
+sudo install minikube-linux-amd64 /usr/local/bin/minikube
+
+verify installation: 
+minikube version
+
+4)Start minikube cluster:
+
+  minikube start 
+
+5)Check if the node(s) and kube-apiserver communication is working as expected:
+
+  minikube kubectl -- get nodes
+
+  Sould be getting something like this:
+
+  NAME       STATUS   ROLES           AGE   VERSION
+  minikube   Ready    control-plane   43h   v1.26.1
+
+  minikube kubectl -- get pods -A
+
+  NAMESPACE     NAME                                      READY   STATUS      RESTARTS   AGE
+  ingress-nginx   ingress-nginx-admission-create--1-kk67h     0/1     Completed   0          2m1s
+  ingress-nginx   ingress-nginx-admission-patch--1-7mp2r      0/1     Completed   1          2m1s
+  ingress-nginx   ingress-nginx-controller-69bdbc4d57-bmwg8   1/1     Running     0          2m
+  kube-system     coredns-78fcd69978-q7nmx                    1/1     Running     0          2m
+  kube-system     etcd-minikube                               1/1     Running     0          2m12s
+  kube-system     kube-apiserver-minikube                     1/1     Running     0          2m16s
+  kube-system     kube-controller-manager-minikube            1/1     Running     0          2m12s
+  kube-system     kube-proxy-5mmnw                            1/1     Running     0          2m1s
+  kube-system     kube-scheduler-minikube                     1/1     Running     0          2m15s
+  kube-system     storage-provisioner                         1/1     Running     0          2m11s
+
+6)Deploy awx-operator on the minikube cluster:
+  
+Create a yaml file called kustomization.yaml with the following content (this will use Kustomize conifguration tool):
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  # Find the latest tag here: https://github.com/ansible/awx-operator/releases
+  - github.com/ansible/awx-operator/config/default?ref=2.2.1
+
+  # Set the image tags to match the git version from above
+images:
+  - name: quay.io/ansible/awx-operator
+    newTag: 2.2.1
+
+  
+namespace: awx
+  
+7)Install the manifests:
+  
+  kubectl apply -k .
+
+8)Check if awx-operator is running:
+   
+  kubectl get pods -n awx
+ 
+  NAME                                             READY   STATUS    RESTARTS   AGE
+  awx-operator-controller-manager-66ccd8f997-rhd4z   2/2     Running   0          11s
+
+9)Create a awx-demo.yaml in order to deploy awx-instance:
+  
+---
+apiVersion: awx.ansible.com/v1beta1
+kind: AWX
+metadata:
+  name: awx-demo
+spec:
+  service_type: nodeport   
+
+10) Add to the resources section of the kustomization.yaml this extra line (it's the name of the deployment):
+
+  -- awx-demo.yaml
+
+11) Apply the changes in order to create the instance on the cluster:
+  
+kubectl apply -k .
+
+12) Check if the new resources have been created:
+  
+   kubectl get pods -l "app.kubernetes.io/managed-by=awx-operator"
+   NAME                        READY   STATUS    RESTARTS   AGE
+   awx-demo-77d96f88d5-pnhr8   4/4     Running   0          3m24s
+   awx-demo-postgres-0         1/1     Running   0          3m34s
+
+13) Access the awx web interface by running the followign command:
+    minikube service -n awx awx-demo-service --url
+
+14) Retrieve the admin password (by default the user name is admin):
+
+    kubectl get secret awx-demo-admin-password -o jsonpath="{.data.password}" | base64 --decode ; echo
+    yDL2Cx5Za94g9MvBP6B73nzVLlmfgPjR
+
+15) Access the web interface and login
+
+16) Setup a vagrant vm in order to use it as a host. Add the ssh key to the new vm and get it's ip.
+
+17) On awx gui in the Access section we can create an organization (it's optional in the current task)
+
+18) In the resources section we create the inventory file. I didn't set any hosts since it's only one host.
+
+19) Next in the Hosts section i created a new host by giving as a name the ip of the Vagrant vm and the name of
+  the inventory that i created previously.
+
+20) Next in the credentials section i've added my root user's name ,set the credential type to Machine and added my private ssh key. As Privilege escalation Method i chose sudo.
+
+21) On my personal github account i've created a new repo and added the following ansible playbook:
+
+---
+- hosts: 192.168.121.38 
+  become: true
+  tasks:
+    - name: install nano
+      yum:
+        name: nano
+        state: present
+        update_cache: true 
+   
+it's task is to install nano editor to the host.
+
+22) I generated a personal token for the authentication and went again back to credentials and created the git credentials with name "git" and Credential Type "Github Personal Access Token" and also passed my token that i generated previously. 
+
+23) Next i created a new project in the Projects section with a name of my preference ,the Source Control Type was set to Git, and in Source Control URL i passed my github repo's url and saved it. Then i pressed Sync in order to synchronize my project with my repo and the status job was successful. 
+
+24) Next i created a Template in the Templates section. I gave a name of my preference and passed the inventory that i had created a few steps before, the Project that i created and i set the Job Type to Run. Automatically the Playbook from my github repo was added.  In the credentials section added the root credentials (of my vm) and saved the template. 
+
+25) As a final step i launched the Template and checked that the palybook ran smoothly . As root user i SSH to my vm and checked if nano editor was installed. That passed succesfully and the awx job was completely functional.
+
