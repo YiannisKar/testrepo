@@ -2,7 +2,7 @@
  - hosts: all
    become: true
    tasks:
-    yum :
-      - name: nano
+    - yum :
+        name: nano
         state: present
  
