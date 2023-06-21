@@ -1,6 +1,5 @@
 ---
  - hosts: all
-   become: false
    tasks:
     - yum :
         name: nano
