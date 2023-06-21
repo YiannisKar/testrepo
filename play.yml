@@ -1,8 +1,8 @@
 ---
  - hosts: all
    become: true
- - tasks:
+   tasks:
     yum :
-       name: nano
-       state: present
+      - name: nano
+        state: present
  
